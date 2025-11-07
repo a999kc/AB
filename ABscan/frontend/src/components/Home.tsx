@@ -3,11 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { detectEnhancedGoLogin } from "../services/detection";
 import { createUser, createScan } from "../services/ax";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Progress } from "@/components/ui/progress";
-import { CheckCircle2, AlertTriangle, User, Loader2, Fingerprint } from "lucide-react";
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
+import { CheckCircle2, AlertTriangle, User } from "lucide-react";
 
 interface DetectionResult {
   verdict: boolean;
@@ -19,9 +16,9 @@ const USER_ID_KEY = "userId";
 
 const Home = () => {
   const [result, setResult] = useState<DetectionResult | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
   const queryClient = useQueryClient();
 
+  // Получаем или создаём пользователя
   const {
     data: userId,
     isLoading: isUserLoading,
@@ -30,22 +27,27 @@ const Home = () => {
     queryKey: ["userId"],
     queryFn: async () => {
       const existingUser = localStorage.getItem(USER_ID_KEY);
-      if (existingUser) return existingUser;
-
+      if (existingUser) {
+        return existingUser;
+      }
+      // Создаём нового пользователя
       const user = await createUser();
       localStorage.setItem(USER_ID_KEY, user.id.toString());
       return user.id.toString();
     },
-    staleTime: Infinity,
+    staleTime: Infinity, // userId не меняется
     retry: 1,
   });
 
+  // Мутация для создания скана
   const createScanMutation = useMutation({
     mutationFn: (data: { user: number; isAb: boolean }) => createScan(data),
     onSuccess: () => {
+      // Инвалидируем кеш сканов, чтобы обновить историю
       queryClient.invalidateQueries({ queryKey: ["scans"] });
     },
     onError: (error: any) => {
+      // Если пользователь не найден, очищаем userId
       if (error.response?.status === 404) {
         localStorage.removeItem(USER_ID_KEY);
         queryClient.setQueryData(["userId"], null);
@@ -53,141 +55,87 @@ const Home = () => {
     },
   });
 
+  // Очистка localStorage при закрытии вкладки
   useEffect(() => {
-    const handleBeforeUnload = () => localStorage.removeItem(USER_ID_KEY);
+    const handleBeforeUnload = () => {
+      localStorage.removeItem(USER_ID_KEY);
+    };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, []);
 
   const handleRunScan = async () => {
-    if (!userId) return;
-
-    setIsScanning(true);
-    setResult(null);
+    if (!userId) {
+      return;
+    }
 
     try {
+      // Выполняем детекцию
       const data = await detectEnhancedGoLogin();
       setResult(data);
 
+      // Создаём запись о скане
+      // Явно преобразуем verdict в boolean для гарантии правильного типа
       await createScanMutation.mutateAsync({
         user: Number(userId),
         isAb: Boolean(data.verdict),
       });
     } catch (err) {
       console.error("Ошибка при выполнении проверки:", err);
-    } finally {
-      setIsScanning(false);
     }
   };
 
-  const isLoading = createScanMutation.isPending || isScanning;
+  const isLoading = createScanMutation.isPending;
   const error = createScanMutation.error || userError;
 
   return (
-    <div className="min-h-screen bg-Linear-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-800 p-4">
-      <div className="max-w-2xl mx-auto mt-12">
-        <Card className="border-0 shadow-xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm overflow-hidden">
+    <Card className="w-full max-w-lg mx-auto mt-10 shadow-md border border-gray-200">
+      <CardHeader>
+        <CardTitle className="text-xl font-bold text-center flex items-center justify-center gap-2">
+          <User className="text-sky-500" /> GoLogin Detection
+        </CardTitle>
+      </CardHeader>
 
-          <CardContent className="space-y-6 pt-6">
-           
-            <div className="flex items-center justify-between text-sm">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <User className="w-4 h-4" />
-                <span>Пользователь</span>
+      <CardContent className="text-center space-y-4">
+        {isUserLoading && <p className="text-xs text-gray-400">Инициализация пользователя...</p>}
+        {userId && <p className="text-xs text-gray-500">Активный пользователь ID: {userId}</p>}
+
+        {result && !isLoading && (
+          <div className="space-y-3 mt-4">
+            {result.verdict ? (
+              <div className="flex flex-col items-center text-red-600">
+                <AlertTriangle size={40} className="mb-1" />
+                <p className="font-semibold text-lg">Антидетект</p>
               </div>
-              {isUserLoading ? (
-                <span className="text-xs text-muted-foreground">Загрузка...</span>
-              ) : userId ? (
-                <Badge variant="secondary" className="font-mono">
-                  ID: {userId}
-                </Badge>
-              ) : null}
-            </div>
-
-            
-            {result && !isLoading && (
-              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                
-                <div className={`rounded-xl p-6 text-center border-2 transition-all ${
-                  result.verdict
-                    ? "bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800"
-                    : "bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800"
-                }`}>
-                  <div className="flex flex-col items-center gap-3">
-                    {result.verdict ? (
-                      <>
-                        <AlertTriangle className="w-12 h-12 text-red-600 dark:text-red-400" />
-                        <h3 className="text-xl font-bold text-red-700 dark:text-red-300">Антидетект обнаружен</h3>
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="w-12 h-12 text-green-600 dark:text-green-400" />
-                        <h3 className="text-xl font-bold text-green-700 dark:text-green-300">Чистый браузер</h3>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-               
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="font-medium">Уровень подозрительности</span>
-                    <span className="font-mono font-bold">{result.score}%</span>
-                  </div>
-                  <Progress 
-                    value={result.score} 
-                    className={`h-3 ${
-                      result.score > 70 ? "bg-red-100" : result.score > 30 ? "bg-yellow-100" : "bg-green-100"
-                    }`}
-                  />
-                  <p className="text-xs text-muted-foreground text-center">
-                    {result.score > 70 ? "Высокий риск" : result.score > 30 ? "Средний риск" : "Низкий риск"}
-                  </p>
-                </div>
+            ) : (
+              <div className="flex flex-col items-center text-green-600">
+                <CheckCircle2 size={40} className="mb-1" />
+                <p className="font-semibold text-lg">Обычный браузер</p>
               </div>
             )}
+            <p className="text-gray-500 text-sm">Score: {result.score}</p>
+          </div>
+        )}
 
-            
-            {error && (
-              <Alert variant="destructive" className="animate-in fade-in slide-in-from-top-4">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>Ошибка</AlertTitle>
-                <AlertDescription>
-                  {(error as any)?.response?.status === 404
-                    ? "Пользователь не найден. Обновите страницу."
-                    : (error as any)?.response?.data?.message || "Не удалось выполнить проверку"}
-                </AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
+        {error && (
+          <p className="text-red-500 font-medium">
+            {(error as any)?.response?.status === 404
+              ? "Пользователь не найден. Пожалуйста, обновите страницу."
+              : (error as any)?.response?.data?.message || "Ошибка при выполнении проверки"}
+          </p>
+        )}
+      </CardContent>
 
-          <CardFooter className="flex flex-col gap-4 pt-6 pb-8">
-            <Button
-              onClick={handleRunScan}
-              disabled={isLoading || isUserLoading || !userId}
-              size="lg"
-              className="w-full max-w-md mx-auto shadow-lg transition-all hover:shadow-xl"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Сканирование...
-                </>
-              ) : (
-                <>
-                  <Fingerprint className="mr-2 h-5 w-5" />
-                  Запустить проверку
-                </>
-              )}
-            </Button>
-
-            <p className="text-xs text-center text-muted-foreground">
-              Результат сохраняется в истории сканов
-            </p>
-          </CardFooter>
-        </Card>
-      </div>
-    </div>
+      <CardFooter className="flex justify-center">
+        <Button
+          onClick={handleRunScan}
+          disabled={isLoading || isUserLoading || !userId}
+          className="w-full max-w-xs"
+        >
+          {isLoading ? "Сканирование..." : "Запустить проверку"}
+        </Button>
+      </CardFooter>
+    </Card>
   );
 };
 
