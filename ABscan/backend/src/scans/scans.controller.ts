@@ -1,6 +1,7 @@
-import { Controller, Delete, Post, Get, Body, Param, ParseIntPipe } from "@nestjs/common";
+import { Controller, Delete, Post, Get, Body, Param, ParseIntPipe, Query} from "@nestjs/common";
 import { ScansService } from "./scans.service";
-import { CreateScansDTO } from "./dto/create-scans-dto";
+import { CreateScansDTO, ScansQueryDto } from "./dto/create-scans-dto";
+
 
 @Controller("scans")
 export class ScansController {
@@ -12,8 +13,8 @@ export class ScansController {
   }
 
   @Get()
-  findAll() {
-    return this.scansService.findAll();
+  findAll(@Query() query: ScansQueryDto) {
+    return this.scansService.findAll(query);
   }
 
   @Get(":id")

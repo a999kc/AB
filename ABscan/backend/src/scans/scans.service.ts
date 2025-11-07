@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectModel } from "@nestjs/sequelize";
 import { Scan } from "./scans.model";
-import { CreateScansDTO } from "./dto/create-scans-dto";
+import { CreateScansDTO, ScansQueryDto } from "./dto/create-scans-dto";
 import { UsersService } from "../users/users.service";
 
 @Injectable()
@@ -12,27 +12,26 @@ export class ScansService {
   ) {}
 
   async create(dto: CreateScansDTO) {
-    // Проверяем существование пользователя
+    
     const user = await this.usersService.findById(dto.user);
     if (!user) {
       throw new NotFoundException(`User with ID ${dto.user} not found`);
     }
 
-    // Явно преобразуем isAb в boolean, чтобы гарантировать правильное значение
-    // Это решает проблему, когда значение приходит как строка "true"/"false" или другие форматы
+    
     let isAb: boolean;
-    const isAbValue = dto.isAb as any; // Используем any для обработки разных типов
+    const isAbValue = dto.isAb as any; 
     if (typeof isAbValue === "boolean") {
       isAb = isAbValue;
     } else if (typeof isAbValue === "string") {
-      // Преобразуем строку "true"/"false" в boolean
+     
       isAb = isAbValue.toLowerCase() === "true";
     } else {
-      // Для чисел и других типов: 0/falsy = false, остальное = true
+      
       isAb = !!isAbValue;
     }
 
-    // Логируем для отладки (можно убрать в production)
+    
     console.log(`Creating scan: user=${dto.user}, isAb=${isAbValue} (type: ${typeof isAbValue}) -> ${isAb} (boolean)`);
 
     const scan = await this.scanRepository.create({
@@ -42,9 +41,33 @@ export class ScansService {
     return scan;
   }
 
-  async findAll() {
-    const scans = await this.scanRepository.findAll();
-    return scans;
+  async findAll(query: ScansQueryDto): Promise<Scan[]> {
+    const { searchId, sortBy = 'date', sortOrder = 'desc' } = query;
+
+    // WHERE
+    const where: any = {};
+    if (searchId) {
+      where.id = parseInt(searchId, 10);
+    }
+
+    // ORDER BY
+    const order: [string, 'ASC' | 'DESC'][] = [];
+    if (sortBy === 'date') {
+      order.push(['createdAt', sortOrder.toUpperCase() as 'ASC' | 'DESC']);
+    } else if (sortBy === 'status') {
+      order.push(['isAb', sortOrder.toUpperCase() as 'ASC' | 'DESC']);
+    }
+
+    // Запрос
+    const result = await this.scanRepository.findAll({
+      where: Object.keys(where).length > 0 ? where : undefined,
+      order,
+      attributes: ['id', 'user', 'isAb', 'createdAt'],
+      raw: true, 
+    });
+
+    
+    return Array.isArray(result) ? result : [];
   }
 
   async findOne(id: number) {

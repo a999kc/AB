@@ -1,5 +1,11 @@
 import axios from "axios";
 
+export interface FetchScansParams {
+  searchId?: string;
+  sortBy?: "date" | "status";
+  sortOrder?: "asc" | "desc";
+}
+
 // Динамически определяем URL API на основе текущего хоста
 // Это позволяет работать как с localhost, так и с IP-адресами (для GoLogin)
 const getBaseUrl = () => {
@@ -20,18 +26,12 @@ export const api = axios.create({
   },
 });
 
-// Получить все сканы
-export const fetchScans = async () => {
-  try {
-    const response = await api.get("/scans");
-    return response.data; // возвращаем только данные
-  } catch (error) {
-    console.error("Ошибка при загрузке сканов:", error);
-    throw error;
-  }
+export const fetchScans = async (params: FetchScansParams = {}) => {
+  const { data } = await api.get("/scans", { params });
+  return data;
 };
 
-// Получить один скан по id
+
 export const fetchScan = async (scanId: number) => {
   try {
     const response = await api.get(`/scans/${scanId}`);
@@ -42,7 +42,7 @@ export const fetchScan = async (scanId: number) => {
   }
 };
 
-// Создать новый скан (для Главной страницы)
+
 export const createScan = async (data: { user: number; isAb: boolean }) => {
   try {
     const response = await api.post("/scans", data);
@@ -53,7 +53,6 @@ export const createScan = async (data: { user: number; isAb: boolean }) => {
   }
 };
 
-// Удалить скан по id
 export const deleteScan = async (scanId: number) => {
   try {
     await api.delete(`/scans/${scanId}`);
@@ -66,7 +65,7 @@ export const deleteScan = async (scanId: number) => {
 export const createUser = async () => {
   try {
     const response = await api.post("/users");
-    return response.data; // возвращаем только данные
+    return response.data; 
   } catch (error) {
     console.error("Ошибка при создании пользователя:", error);
     throw error;
